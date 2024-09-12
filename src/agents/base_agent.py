@@ -1,30 +1,37 @@
 # Create a base agent class that has the following functionality
 #   1. think - is the generate text method (generates the response dictionary)
-
 from abc import ABC, abstractmethod
 from typing import Optional
 from models.ollama_model import OllamaModel
-from prompts.system_prompts import agent_system_prompt_template
+from prompts.system_prompts import AGENT_SYS_PROMPT
+# from tools.model_tools import add, multiply, subtracts
 
 
-class Agent(ABC):
+class BaseAgent(ABC):
     def __init__(
         self,
-        model_service: OllamaModel,  # only ollama currently
-        model_name: str,
+        llm,
+        tools: Optional[list] = [],
         stop_token: Optional[str] = None,
+        template: Optional[str] = None
     ):
         """
         Init the agent with requried model and other metadata
 
         Parameters:
         """
-        self.model_service = model_service
-        self.model_name = model_name
+        self.llm = llm
         self.stop_token = stop_token
-        self.agent_system_prompt = agent_system_prompt_template
+        self.agent_system_prompt = template or AGENT_SYS_PROMPT
 
-    def think(self, prompt: str):
+        # define the tools the agent can use
+        self.tools = tools
+
+    def prepare_tools(self):
+        """Prepare tool names and tool descriptions"""
+        pass
+
+    def generate_step(self, prompt: str):
         """
         This is basically the generate method
             (or calls the generate method internally)
@@ -32,7 +39,10 @@ class Agent(ABC):
         Parameters:
             prompt: User asked query, the question.
         """
+        # prepare if there are any tools
+        self.prepare_tools()
 
+        # Add conditionals here to add support for other models
         # the message loop
         if isinstance(self.model_service, OllamaModel):
             model_instance = self.model_service(
@@ -53,9 +63,9 @@ class Agent(ABC):
         return response_dict
 
     @abstractmethod
-    def work(self, *args, **kwargs):
+    def chat(self, input: str, chat_history, *args, **kwargs):
         """
         A method to format and display the response from the model.
-        This method is to be defined in every agent.
+        This method is to be defined in every agent
         """
         pass
