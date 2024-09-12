@@ -3,9 +3,8 @@ import requests
 import json
 from ollama import Client
 from tools.base import Tool
-from typing import List, Sequence, Type, Optional
+from typing import List, Sequence, Type, Optional, Union
 from pydantic import ValidationError
-import regex as re
 
 
 class OllamaModel:
@@ -16,8 +15,10 @@ class OllamaModel:
         model,
         system_prompt,
         temperature=0,
+        context_length: int = 3900,
         stop=None,
         url="http://localhost:11434",
+        json_mode: bool = False,
         is_tool_use_model=True,
     ):
         """
@@ -32,12 +33,15 @@ class OllamaModel:
         self.url = url
         self.model_generate_endpoint = url + "/api/generate"
         self.temperature = temperature
+        self.context_length = context_length
         self.model = model
         self.system_prompt = system_prompt
         self.stop = stop
         self.headers = {"Content-Type": "application/json"}
+        self.json_mode = json_mode
         # is tool use available for model
         self.is_tool_use_model = is_tool_use_model
+        self._client = None
 
     @property
     def client(self):
@@ -79,11 +83,16 @@ class OllamaModel:
 
             return response
 
-    def convert_messages(self, input: str, system_prompt: Optional[str] = None, chat_history: Optional[List[dict]] = None):
+    def convert_messages(
+        self,
+        input: str,
+        system_prompt: Optional[str] = None,
+        chat_history: Optional[List[dict]] = None,
+    ):
         """Convert messages intp OpenAI format (This is what ollama accepts)"""
-        input_message = {'role': 'user', 'content': input}
+        input_message = {"role": "user", "content": input}
         if system_prompt is not None:
-            system_message = {'role': "system", 'content': system_prompt}
+            system_message = {"role": "system", "content": system_prompt}
 
         messages = [system_message, input_message]
 
@@ -92,17 +101,22 @@ class OllamaModel:
             messages = chat_history.extend(messages)
         return messages
 
-    def _validate_structured_response(self, response: str, called_tool: Type[Tool]):
+    def _validate_structured_response(
+        self, response: Union[str, dict], called_tool: Type[Tool]
+    ):
         "Validation of the tool response of the model"
         try:
             tool_schema = called_tool.tool_schema
             # validate the tool_schema
-            tool_schema.model_validate_json(response)
+            if isinstance(response, str):
+                parsed_response = tool_schema.model_validate_json(response)
+            elif isinstance(response, dict):
+                parsed_response = tool_schema.model_validate(response)
 
-            # return the response if successful
-            return response
-        except ValidationError:
-            raise
+            return parsed_response.model_dump()
+
+        except ValidationError as e:
+            raise e
 
     def chat(
         self,
@@ -120,19 +134,31 @@ class OllamaModel:
 
         if self.is_tool_use_model:
             client_response = self.client.chat(
-                messages=messages, tools=tools, format=""
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                format="json" if self.json_mode else "",
             )
             # get the tool_call response & extract the tool name
-            tool_response = client_response["message"]["tool_calls"]
-            tool_name = re.match("^[a-zA-Z](")
+            tool_response = client_response["message"].get("tool_calls", [])
+            tool_name = tool_response["function"]["name"]
+            # get the function args to call the function later.
+            tool_arguments = tool_response["function"]["arguments"]
             # validate the response
             called_tool = tool_dict[tool_name]
-            response = self._validate_structured_response(
-                response=tool_response, called_tool=called_tool
+            args = self._validate_structured_response(
+                response=tool_arguments, called_tool=called_tool
             )
+            # call the tool if return_direct is not None
+            response = called_tool.call(args)
 
         else:
-            client_response = self.client.chat(messages=messages, tools=None, format="")
+            client_response = self.client.chat(
+                model=self.model,
+                messages=messages,
+                tools=None,
+                format="json" if self.json_mode else "",
+            )
             # get the message content
             response = client_response["message"]["content"]
 
@@ -145,8 +171,10 @@ class OllamaModel:
                 # get the called tool
                 called_tool = tool_dict[tool_name]
                 # validate the response
-                response = self._validate_structured_response(
+                args = self._validate_structured_response(
                     response=tool_response, called_tool=called_tool
                 )
+                # call the tool
+                response = called_tool.call(args)
 
         return response
