@@ -1,26 +1,30 @@
 # Create a base agent class that has the following functionality
 #   1. think - is the generate text method (generates the response dictionary)
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Sequence, Callable, Union, Literal
 from models.ollama_model import OllamaModel
 from prompts.system_prompts import AGENT_SYS_PROMPT
-# from tools.model_tools import add, multiply, subtracts
+from tools.model_tools import add, multiply, subtract
+from tools.base import Tool
 
 
 class BaseAgent(ABC):
+
     def __init__(
         self,
-        llm,
-        tools: Optional[list] = [],
+        model_name: str,
+        model_service: Literal['ollama'],
+        tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
         stop_token: Optional[str] = None,
-        template: Optional[str] = None
+        template: Optional[str] = None,
     ):
         """
         Init the agent with requried model and other metadata
 
         Parameters:
         """
-        self.llm = llm
+        self.model_name = model_name
+        self.model_service = model_service
         self.stop_token = stop_token
         self.agent_system_prompt = template or AGENT_SYS_PROMPT
 
@@ -29,12 +33,17 @@ class BaseAgent(ABC):
 
     def prepare_tools(self):
         """Prepare tool names and tool descriptions"""
+        if self.tools and not isinstance(self.tools[0], Tool):
+            self.tools = map(lambda x: Tool.from_function(function=x))
+
+    def run_step(self, prompt: str, chat_history):
         pass
 
     def generate_step(self, prompt: str):
         """
         This is basically the generate method
             (or calls the generate method internally)
+        Doesn't take history into account.
 
         Parameters:
             prompt: User asked query, the question.
