@@ -1,5 +1,5 @@
 # Definition of the system prompts
 
-agent_system_prompt = """
+AGENT_SYSTEM_PROMPT = """
 {user_query}
 """

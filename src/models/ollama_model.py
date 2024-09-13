@@ -2,8 +2,8 @@
 import requests
 import json
 from ollama import Client
-from tools.base import Tool
-from typing import List, Sequence, Type, Optional, Union
+from src.tools.base import Tool
+from typing import Sequence, Type, Optional, Union
 from pydantic import ValidationError
 
 
@@ -65,11 +65,11 @@ class OllamaModel:
 
         try:
             request_response = requests.post(
-                self.model.generate_endpoint,
+                self.model_generate_endpoint,
                 headers=self.headers,
                 data=json.dumps(payload),
             )
-            print(f"REQUEST RESPONSE: {request_response}")
+            print(f"REQUEST RESPONSE: {request_response.status_code}")
             request_response_json = request_response.json()
             response = request_response_json["response"]
             response_dict = json.loads(response)
@@ -85,20 +85,33 @@ class OllamaModel:
 
     def convert_messages(
         self,
-        input: str,
-        system_prompt: Optional[str] = None,
-        chat_history: Optional[List[dict]] = None,
+        input: Union[str, Sequence[dict]],
+        chat_history: Optional[Sequence[dict]] = None,
     ):
-        """Convert messages intp OpenAI format (This is what ollama accepts)"""
-        input_message = {"role": "user", "content": input}
-        if system_prompt is not None:
-            system_message = {"role": "system", "content": system_prompt}
+        """
+        Convert messages intp OpenAI format (This is what ollama accepts)
+            Order: sys_message - chat_history - input
+        """
+        messages = []
+        # input message handling.
+        if isinstance(input, str):
+            input_message = {"role": "user", "content": input}
+        elif isinstance(input, dict) and (input.get('role', None) and input.get('content', None)):
+            # TODO: add validation logic here, make a type for the input message
+            input_message = input
+        else:
+            raise ValueError("Input message is not according to the expected format, Expected: {'role': , 'content'}")
 
-        messages = [system_message, input_message]
+        # system prompt handling
+        if self.system_prompt is not None:
+            system_message = {"role": "system", "content": self.system_prompt}
+            messages.append(system_message)
 
         # add history if given
         if chat_history is not None:
-            messages = chat_history.extend(messages)
+            messages.extend(chat_history)
+        # add the input message to messages
+        messages.append(input_message)
         return messages
 
     def _validate_structured_response(
@@ -120,38 +133,47 @@ class OllamaModel:
 
     def chat(
         self,
-        input: str,
-        system_prompt: str,
-        chat_history: List,
+        input: Union[str, dict[str, str]],
+        chat_history: Optional[Sequence[dict]] = None,
         tools: Optional[Sequence[Type[Tool]]] = None,
     ):
-        """Chat with the model"""
+        """
+        Chat with the model
+            Does the tool call and returns the output
+            Validates the model response to follow the intended schema.
+        """
         # format the messages according to requirement
-        messages = self.convert_messages(input, system_prompt, chat_history)
+        messages = self.convert_messages(input, chat_history)
+        print(messages)
 
         # create a tool_dict to map the called_tool back to tools
+        tools = tools or []
         tool_dict = dict(map(lambda x: (x.tool_name, x), tools))
 
         if self.is_tool_use_model:
             client_response = self.client.chat(
                 model=self.model,
                 messages=messages,
-                tools=tools,
+                tools=[tool.to_openai_tool() for tool in tools],
                 format="json" if self.json_mode else "",
             )
+            print(client_response)
             # get the tool_call response & extract the tool name
             tool_response = client_response["message"].get("tool_calls", [])
-            tool_name = tool_response["function"]["name"]
+            # if the tool response is None
+            if not tool_response:
+                response = client_response['message']
+                return response
+
+            tool_name = tool_response[0]["function"]["name"]
             # get the function args to call the function later.
-            tool_arguments = tool_response["function"]["arguments"]
+            tool_arguments = tool_response[0]["function"]["arguments"]
             # validate the response
             called_tool = tool_dict[tool_name]
             args = self._validate_structured_response(
                 response=tool_arguments, called_tool=called_tool
             )
-            # call the tool if return_direct is not None
-            response = called_tool.call(args)
-
+            response = client_response["message"]
         else:
             client_response = self.client.chat(
                 model=self.model,
@@ -160,21 +182,26 @@ class OllamaModel:
                 format="json" if self.json_mode else "",
             )
             # get the message content
-            response = client_response["message"]["content"]
+            content = client_response["message"]["content"]
 
             # The case if the model is not a tool-call supported model on ollama but
             # we have specified the proper system prompt
-            if tools is not None:
+            if tools:
                 # logic to get the tool call from the response
-                tool_response = response.get("tool_call")
-                tool_name = response.get("tool_name")
+                tool_response = content.get("tool_call")
+                tool_name = content.get("tool_name")
                 # get the called tool
                 called_tool = tool_dict[tool_name]
                 # validate the response
                 args = self._validate_structured_response(
                     response=tool_response, called_tool=called_tool
                 )
-                # call the tool
-                response = called_tool.call(args)
+                # create a client_response['message'] structure.
+                response = {
+                    "role": client_response['message']['role'],
+                    "content": client_response["message"]['content'],
+                    "tool_calls": [{"function": {"name": tool_name, 'arguments': args}}]
+                }
 
+            response = client_response['message']
         return response

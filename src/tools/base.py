@@ -36,9 +36,9 @@ class Tool(BaseModel):
     tool_schema: Type[BaseModel]
     return_direct: bool = False
 
-    def tool_call(self, input: Any):
+    def tool_output(self, input: Any):
         """Call the tool"""
-        return self.func(input)
+        return self.func(**input)
 
     @classmethod
     def from_function(

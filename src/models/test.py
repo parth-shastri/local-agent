@@ -2,7 +2,7 @@ import ollama
 
 # simple chat with system prompt
 response = ollama.chat(
-    model="gemma2:2b",
+    model="llama3.1:latest",
     messages=[
         {"role": "system", "content": "You are a Phd level financial advisior."},
         {
@@ -16,6 +16,7 @@ response = ollama.chat(
 for chunk in response:
     print(chunk["message"]["content"], end="", flush=True)
 
+print("\n" + "-" * 50)
 
 # tool use chat
 tools = [
@@ -38,10 +39,11 @@ tools = [
     },
 ]
 response = ollama.chat(
-    model="gemma2:2b",
+    model="llama3.1:latest",
     messages=[{"role": "user", "content": "what is the weather today in Satara, MH?"}],
     tools=tools,
 )
 
 
-print(response['message'])
+print("Response for TOOL CALL:")
+print(response)
