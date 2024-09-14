@@ -5,6 +5,7 @@ from ollama import Client
 from src.tools.base import Tool
 from typing import Sequence, Type, Optional, Union
 from pydantic import ValidationError
+from termcolor import colored
 
 
 class OllamaModel:
@@ -15,7 +16,7 @@ class OllamaModel:
         model,
         system_prompt,
         temperature=0,
-        context_length: int = 3900,
+        context_window: int = 4096,
         stop=None,
         url="http://localhost:11434",
         json_mode: bool = False,
@@ -33,7 +34,7 @@ class OllamaModel:
         self.url = url
         self.model_generate_endpoint = url + "/api/generate"
         self.temperature = temperature
-        self.context_length = context_length
+        self.context_length = context_window
         self.model = model
         self.system_prompt = system_prompt
         self.stop = stop
@@ -55,7 +56,7 @@ class OllamaModel:
         """
         payload = {
             "model": self.model,
-            "format": "json",
+            "format": "json" if self.json_mode else '',
             "prompt": prompt,
             "system_prompt": self.system_prompt,
             "stream": False,
@@ -69,14 +70,12 @@ class OllamaModel:
                 headers=self.headers,
                 data=json.dumps(payload),
             )
-            print(f"REQUEST RESPONSE: {request_response.status_code}")
+            print(f"[MODEL]: REQUEST RESPONSE: {request_response.status_code}")
             request_response_json = request_response.json()
             response = request_response_json["response"]
-            response_dict = json.loads(response)
+            print(f"\n\nResponse from OllamaModel::{self.model}={response}")
 
-            print(f"\n\nResponse from OllamaModel::{self.model}={response_dict}")
-
-            return response_dict
+            return response
 
         except requests.RequestException as e:
             response = {"error": f"Error in invoking the model: {str(e)}"}
@@ -144,7 +143,6 @@ class OllamaModel:
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
-        print(messages)
 
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []
@@ -157,12 +155,15 @@ class OllamaModel:
                 tools=[tool.to_openai_tool() for tool in tools],
                 format="json" if self.json_mode else "",
             )
-            print(client_response)
+            print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the tool_call response & extract the tool name
+            # Notify the user if no tool is used.
             tool_response = client_response["message"].get("tool_calls", [])
+
             # if the tool response is None
             if not tool_response:
                 response = client_response['message']
+                response["content"] += "\nDisclaimer: The output was generated without using any tools."
                 return response
 
             tool_name = tool_response[0]["function"]["name"]
@@ -179,17 +180,20 @@ class OllamaModel:
                 model=self.model,
                 messages=messages,
                 tools=None,
-                format="json" if self.json_mode else "",
+                format="json"
             )
+            print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the message content
             content = client_response["message"]["content"]
 
             # The case if the model is not a tool-call supported model on ollama but
             # we have specified the proper system prompt
             if tools:
+                # parse content to json .loads ?
+                content = json.loads(content)
                 # logic to get the tool call from the response
-                tool_response = content.get("tool_call")
-                tool_name = content.get("tool_name")
+                tool_response = content.get("tool_input")
+                tool_name = content.get("tool_choice")
                 # get the called tool
                 called_tool = tool_dict[tool_name]
                 # validate the response

@@ -10,19 +10,24 @@ from termcolor import colored
 
 
 class FunctionCallingAgent(BaseAgent):
+
     def __init__(
         self,
         model_name: str,
         model_service: Literal["ollama"],
         tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
+        temperature: float = 0.0,
+        context_window: int = 4096,
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
-        is_tool_use_model: bool = True
+        is_tool_use_model: bool = True,
     ):
         super().__init__(
             model_name=model_name,
             model_service=model_service,
             tools=tools,
+            temperature=temperature,
+            context_window=context_window,
             stop_token=stop_token,
             system_prompt=system_prompt,
             is_tool_use_model=is_tool_use_model,
@@ -77,7 +82,7 @@ class FunctionCallingAgent(BaseAgent):
 
         return response
 
-    def chat(self, input: str, chat_history: Optional[Sequence[dict]] = None, max_retries: int = 3, *args, **kwargs):
+    def chat(self, input: str, chat_history: Optional[Sequence[dict]] = None, max_retries: int = 3, verbose=False, *args, **kwargs):
         """Chat using input"""
         trial_no = 0
         final_response = None
@@ -86,7 +91,8 @@ class FunctionCallingAgent(BaseAgent):
             try:
                 response = self.run_step(input, chat_history, use_tools=True)
 
-                print(colored(f"Model Response: {response}", color='light_green'))
+                if verbose:
+                    print(colored(f"[AGENT]: Model Response: {response}", color='light_green'))
                 # if the name field of the response is not Empty
                 if tool_calls := response.get('tool_calls', []):
                     # call the tool
@@ -98,9 +104,14 @@ class FunctionCallingAgent(BaseAgent):
 
                     return final_response
 
+                else:
+                    final_response = response["content"]
+                    return final_response
+
             except ValidationError as e:
                 # retry the execution
-                print(colored(f"Encountered Validation Error, retrying execution: {e}", color='light_red'))
+                if verbose:
+                    print(colored(f"[AGENT]: Encountered Validation Error, retrying execution: {e}", color='light_red'))
                 trial_no += 1
                 continue
 
@@ -109,8 +120,9 @@ class FunctionCallingAgent(BaseAgent):
                 # This error means an unspecified tool was called
                 # Small models generally have this problem
                 # call the run_step method with use_tools=False to answer from model_knowledge.
-                print(colored(f"Encountered KeyError: {e}", color='light_red'))
-                print(colored("Attempting to Answer from model Knowledge !", color='cyan'))
+                if verbose:
+                    print(colored(f"[AGENT]: Encountered KeyError: {e}", color='light_red'))
+                    print(colored("Attempting to Answer from model Knowledge !", color='cyan'))
                 additional_context = " Answer from your knowledge & provide a disclaimer to the user."
                 response = self.run_step(input + additional_context, chat_history, use_tools=False)
                 final_response = response['content']

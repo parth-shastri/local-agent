@@ -12,8 +12,10 @@ class BaseAgent(ABC):
     def __init__(
         self,
         model_name: str,
-        model_service: Literal['ollama'],
+        model_service: Literal["ollama"],
         tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
+        temperature: float = 0.0,
+        context_window: int = 4096,
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_tool_use_model: bool = True,
@@ -25,9 +27,13 @@ class BaseAgent(ABC):
         """
         self.model_name = model_name
         self.model_service = model_service
-        self.stop_token = stop_token
         self.agent_system_prompt = system_prompt or AGENT_SYSTEM_PROMPT
         self.is_tool_use_model = is_tool_use_model
+
+        # llm arguments
+        self.temperature = temperature
+        self.context_window = context_window
+        self.stop_token = stop_token
 
         # define the tools the agent can use
         self.tools = tools
@@ -35,14 +41,31 @@ class BaseAgent(ABC):
 
         # init the LLM
         self.llm = self._init_llm()
+        # Format the system prompt
+        self._format_system_prompt()
+
+    @property
+    def system_prompt(self):
+        """The formatted system prompt"""
+        return self.agent_system_prompt
+
+    def _format_system_prompt(self):
+        """Format the system prompt"""
+        # only format if not natively supported
+        if not self.is_tool_use_model:
+            self.agent_system_prompt.format(
+                tool_descriptions=[tool.tool_description for tool in self.tools]
+            )
 
     def _init_llm(self):
         if self.model_service == "ollama":
             llm = OllamaModel(
                 model=self.model_name,
                 system_prompt=self.agent_system_prompt,
+                temperature=self.temperature,
+                context_window=self.context_window,
                 stop=self.stop_token,
-                is_tool_use_model=self.is_tool_use_model
+                is_tool_use_model=self.is_tool_use_model,
             )
             return llm
         else:
@@ -65,7 +88,7 @@ class BaseAgent(ABC):
         if self.tools and not isinstance(self.tools[0], Tool):
             self.tools = map(lambda x: Tool.from_function(function=x))
 
-    def generate_step(self, prompt: str):
+    def generate_step(self, prompt: str, json_mode=False):
         """
         This is basically the generate method
         One-time generation.
@@ -80,11 +103,13 @@ class BaseAgent(ABC):
         # Add conditionals here to add support for other models
         # the message loop
         if self.model_service == "ollama":
-            model_instance = self.model_service(
+            model_instance = OllamaModel(
                 model=self.model_name,
                 system_prompt=self.agent_system_prompt,
-                temperature=0,
+                temperature=self.temperature,
+                context_window=self.context_window,
                 stop=self.stop_token,
+                json_mode=json_mode,
             )
 
         else:
@@ -93,7 +118,7 @@ class BaseAgent(ABC):
             )
 
         # get the response dict from the model_instance
-        response_dict = model_instance.generate_text(prompt)
+        response_dict = model_instance.generate_text_api_call(prompt)
 
         return response_dict
 
