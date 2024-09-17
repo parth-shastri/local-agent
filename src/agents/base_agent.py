@@ -3,7 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Callable, Union, Literal
 from src.models.ollama_model import OllamaModel
-from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT
+from src.models.llamacpp_model import LlamaCPPModel
+from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT, AGENT_SIMPLE_PROMPT
 from src.tools.base import Tool
 
 
@@ -12,28 +13,32 @@ class BaseAgent(ABC):
     def __init__(
         self,
         model_name: str,
-        model_service: Literal["ollama"],
+        model_service: Literal["ollama", "llamacpp", "groq"],
         tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
+        model_path: Optional[str] = None,
         temperature: float = 0.0,
         context_window: int = 4096,
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_tool_use_model: bool = True,
+        **generation_kwargs
     ):
         """
         Init the agent with requried model and other metadata
 
         Parameters:
         """
+        self.model_path = model_path
         self.model_name = model_name
         self.model_service = model_service
-        self.agent_system_prompt = system_prompt or AGENT_SYSTEM_PROMPT
+        self.agent_system_prompt = (system_prompt or AGENT_SYSTEM_PROMPT) if is_tool_use_model else (system_prompt or AGENT_SIMPLE_PROMPT)
         self.is_tool_use_model = is_tool_use_model
 
         # llm arguments
         self.temperature = temperature
         self.context_window = context_window
         self.stop_token = stop_token
+        self.generation_kwargs = generation_kwargs or {}
 
         # define the tools the agent can use
         self.tools = tools
@@ -59,18 +64,40 @@ class BaseAgent(ABC):
 
     def _init_llm(self):
         if self.model_service == "ollama":
-            llm = OllamaModel(
-                model=self.model_name,
-                system_prompt=self.agent_system_prompt,
-                temperature=self.temperature,
-                context_window=self.context_window,
-                stop=self.stop_token,
-                is_tool_use_model=self.is_tool_use_model,
-            )
-            return llm
+            try:
+                llm = OllamaModel(
+                    model=self.model_name,
+                    system_prompt=self.agent_system_prompt,
+                    temperature=self.temperature,
+                    context_window=self.context_window,
+                    stop=self.stop_token,
+                    is_tool_use_model=self.is_tool_use_model,
+                    **self.generation_kwargs
+                )
+                return llm
+            except ValueError as e:
+                raise ValueError(
+                    f"Check the model_name for ollama, chat_format arguments: {e}"
+                )
+        elif self.model_service == "llamacpp":
+            try:
+                llm = LlamaCPPModel(
+                    model=self.model_path,
+                    model_name=self.model_name,
+                    chat_format=self.chat_format,
+                    system_prompt=self.agent_system_prompt,
+                    temperature=self.temperature,
+                    context_window=self.context_window,
+                    max_new_tokens=self.max_tokens,
+                    is_tool_use_model=self.is_tool_use_model,
+                    **self.generation_kwargs,
+                )
+                return llm
+            except ValueError as e:
+                raise ValueError(f"Check the model_name /model_path, chat_format arguments for llamacpp. {e}")
         else:
             raise ValueError(
-                f"Can only serve locally with ollama currently, found model_service={self.model_service}"
+                f"Can only serve locally with [ollama, llamacpp] currently, found model_service={self.model_service}"
             )
 
     def _validate_chat_history(self, chat_history: Sequence[dict]):
@@ -110,6 +137,8 @@ class BaseAgent(ABC):
                 context_window=self.context_window,
                 stop=self.stop_token,
                 json_mode=json_mode,
+                is_tool_use_model=self.is_tool_use_model,
+                **self.generate_kwargs
             )
 
         else:

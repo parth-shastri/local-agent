@@ -1,1 +1,5 @@
-*.ipynb
+/*.ipynb
+*/**/__pycache__
+/logs
+*data
+/secrets

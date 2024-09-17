@@ -41,6 +41,7 @@ class FunctionCallingAgent(BaseAgent):
         # return type like the openai messages format.
         return {
             "role": "tool",
+            "name": tool_call.tool_name,
             "content": str(output),
             "return_direct": tool_call.return_direct,
             "tool_response": response
@@ -62,9 +63,9 @@ class FunctionCallingAgent(BaseAgent):
         else:
             raise ValueError("Didn't get the function calling response by the model")
 
-        tool_message = {"role": tool_output["role"], "content": tool_output["content"]}
+        tool_message = {"role": tool_output["role"], "name": tool_output["name"], "content": tool_output["content"]}
 
-        print(tool_message, chat_history)
+        # print(tool_message, chat_history)
 
         response = self.llm.chat(tool_message, chat_history, tools=None)
         return response['content']

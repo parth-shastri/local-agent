@@ -12,14 +12,15 @@ def get_args():
     Command line argument parser.
     """
     parser = ArgumentParser(description="A Local Agent that has access to tools.")
-    parser.add_argument("--model_name", '-m', type=str, default="llama3.1:latest", help="The model to use, NOTE: Download the model first using `ollama run model_name` if using local models.")
-    parser.add_argument("--model_service", default="ollama", choices=["ollama"], help="The model_service provider that hosts the model.")
+    parser.add_argument("--model_path", "-mp", type=str, default="meta-llama/llama3.1-8b", help="The huggingface repo-id/ model_path to use, (only used in case llama_cpp is the model_service)")
+    parser.add_argument("--model_name", '-m', type=str, default="llama3.1:latest", help="The model to use, NOTE: Download the model first using `ollama run model_name` if using ollama models.")
+    parser.add_argument("--model_service", default="ollama", choices=["ollama", "llamacpp"], help="The model_service provider that hosts the model.")
     parser.add_argument("--is_tool_use", action="store_true", default=True, help="If the tool use capabilities of the model are natively supported by the model_service.")
     parser.add_argument("--temperature", type=float, default=0.01)
     parser.add_argument("--context_window", type=int, default=4000)
     parser.add_argument("--stop_token", "-st", type=list, help="Tokens that determine the end of sequence, may be different for different models.")
     parser.add_argument("--verbose", action='store_true', help="Displays the agent internal calls for debugging", default=False)
-    parser.add_argument("--system_prompt", type=str, help="The system prompt for the model.", default=None)
+    parser.add_argument("--system_prompt", type=str, help="The system prompt for the model. will use the default prompt under src/prompts/prompts.py", default=None)
 
     return parser.parse_args()
 
@@ -39,6 +40,7 @@ if __name__ == "__main__":
     tools = [Tool.from_function(function=getattr(model_tools, tool)) for tool in all_tools]
 
     agent = FunctionCallingAgent(
+        model_path=args.model_path,
         model_name=args.model_name,
         model_service=args.model_service,
         tools=tools,

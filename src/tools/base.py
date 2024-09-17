@@ -85,8 +85,13 @@ class Tool(BaseModel):
                 "Please shorten your description or move it to prompt"
             )
 
-        return {
-            "name": self.tool_name,
-            "description": self.tool_description,
-            "parameters": self.get_parameter_dict(),
+        tool = {
+            "type": "function",
+            "function": {
+                "name": self.tool_name,
+                "description": self.tool_description,
+                "parameters": self.get_parameter_dict(),
+            },
         }
+
+        return tool
