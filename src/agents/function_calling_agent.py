@@ -1,7 +1,7 @@
 """
 A simple function calling agent
 """
-
+import json
 from src.agents.base_agent import BaseAgent
 from typing import Literal, Optional, Union, Sequence, Callable, Any
 from src.tools.base import Tool
@@ -14,37 +14,49 @@ class FunctionCallingAgent(BaseAgent):
     def __init__(
         self,
         model_name: str,
-        model_service: Literal["ollama"],
+        model_service: Literal["ollama", "llamacpp", "groq"],
         tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
+        model_path: Optional[str] = None,
+        chat_format: Optional[str] = None,
         temperature: float = 0.0,
         context_window: int = 4096,
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_tool_use_model: bool = True,
+        model_verbose: bool = False,
+        **generation_kwargs,
     ):
         super().__init__(
             model_name=model_name,
             model_service=model_service,
             tools=tools,
+            model_path=model_path,
+            chat_format=chat_format,
             temperature=temperature,
             context_window=context_window,
             stop_token=stop_token,
             system_prompt=system_prompt,
             is_tool_use_model=is_tool_use_model,
+            model_verbose=model_verbose,
+            **generation_kwargs
         )
 
-    def _call_function(self, tool_call: Tool, response: Any):
+    def _call_function(self, tool_call: Tool, response_tool_call: Any):
         """Call the tool function and get the final response"""
         # given the tool_call & tool_name get the tool response
-        args = response["tool_calls"][0]["function"]['arguments']
-        output = tool_call.tool_output(args)
+        args = response_tool_call["function"]['arguments']
+        # pass the args to the tool_output method, load the json string if required
+        # NOTE: the args are already validated upto this point
+        output = tool_call.tool_output(args if not isinstance(args, str) else json.loads(args))
         # return type like the openai messages format.
         return {
+            "tool_call_id": response_tool_call.get("id", None),
             "role": "tool",
             "name": tool_call.tool_name,
             "content": str(output),
             "return_direct": tool_call.return_direct,
-            "tool_response": response
+            # The model tool call response to use later.
+            "tool_response": {"role": "assistant", "content": None, "tool_calls": [response_tool_call]},
         }
 
     def finalize_response(self, input, chat_history, tool_output):
@@ -63,7 +75,7 @@ class FunctionCallingAgent(BaseAgent):
         else:
             raise ValueError("Didn't get the function calling response by the model")
 
-        tool_message = {"role": tool_output["role"], "name": tool_output["name"], "content": tool_output["content"]}
+        tool_message = {"tool_call_id": tool_output["tool_call_id"], "role": tool_output["role"], "name": tool_output["name"], "content": tool_output["content"]}
 
         # print(tool_message, chat_history)
 
@@ -97,10 +109,12 @@ class FunctionCallingAgent(BaseAgent):
                 # if the name field of the response is not Empty
                 if tool_calls := response.get('tool_calls', []):
                     # call the tool
+                    # NOTE: implement sequential tool call in case multiple tool calls are required.
                     tool_name = tool_calls[0]['function']['name']
-                    tool_output = self._call_function(self.tool_dict[tool_name], response)
+                    tool_output = self._call_function(self.tool_dict[tool_name], tool_calls[0])
 
                     # either return the response as it is or finalize it before returning
+                    # Add the previous response to the chat_history as well
                     final_response = self.finalize_response(input, chat_history, tool_output) if not tool_output['return_direct'] else tool_output['content']
 
                     return final_response

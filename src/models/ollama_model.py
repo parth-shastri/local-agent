@@ -48,9 +48,9 @@ class OllamaModel(BaseLLM):
         description="Base url the model is hosted under.",
     )
 
-    additional_kwargs: Dict[str, Any] = Field(
+    generation_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Additional model parameters for the Ollama API.",
+        description="Additional model generation parameters for the Ollama API.",
     )
 
     verbose: bool = Field(
@@ -90,11 +90,11 @@ class OllamaModel(BaseLLM):
             stop=stop,
             json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
+            verbose=verbose
         )
         self.url = url
         self.model_generate_endpoint = url + "/api/generate"
         self.headers = {"Content-Type": "application/json"}
-        self.verbose = verbose
         self._client = None
         # specify the generation kwargs
         self.generation_kwargs = {
@@ -107,8 +107,9 @@ class OllamaModel(BaseLLM):
 
     def _check_model_name(self):
         """Check if the given model name is served through ollama"""
-        if self.model not in ollama.list():
-            raise ValueError(f"The Ollama model not found locally, found {ollama.list()} models try one of these or pull the model by `ollama pull {self.model_name}`")
+        model_list = map(lambda x: x["name"], ollama.list()['models'])
+        if self.model not in model_list:
+            raise ValueError(f"The Ollama model not found locally, found {model_list} models try one of these or pull the model by `ollama pull {self.model_name}`")
 
     @property
     def client(self):
@@ -163,6 +164,8 @@ class OllamaModel(BaseLLM):
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
+        if self.verbose:
+            print(f"Input: {messages}")
 
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Callable, Union, Literal
 from src.models.ollama_model import OllamaModel
 from src.models.llamacpp_model import LlamaCPPModel
-from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT, AGENT_SIMPLE_PROMPT
+from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT
 from src.tools.base import Tool
 
 
@@ -16,12 +16,14 @@ class BaseAgent(ABC):
         model_service: Literal["ollama", "llamacpp", "groq"],
         tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
         model_path: Optional[str] = None,
+        chat_format: Optional[str] = None,
         temperature: float = 0.0,
         context_window: int = 4096,
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_tool_use_model: bool = True,
-        **generation_kwargs
+        model_verbose: bool = False,
+        **generation_kwargs,
     ):
         """
         Init the agent with requried model and other metadata
@@ -30,9 +32,11 @@ class BaseAgent(ABC):
         """
         self.model_path = model_path
         self.model_name = model_name
+        self.chat_format = chat_format
         self.model_service = model_service
-        self.agent_system_prompt = (system_prompt or AGENT_SYSTEM_PROMPT) if is_tool_use_model else (system_prompt or AGENT_SIMPLE_PROMPT)
+        self.agent_system_prompt = (system_prompt or AGENT_SYSTEM_PROMPT) if not is_tool_use_model else system_prompt
         self.is_tool_use_model = is_tool_use_model
+        self.model_verbose = model_verbose    # The verbosity of the model. (Display additional responses from the model)
 
         # llm arguments
         self.temperature = temperature
@@ -72,6 +76,7 @@ class BaseAgent(ABC):
                     context_window=self.context_window,
                     stop=self.stop_token,
                     is_tool_use_model=self.is_tool_use_model,
+                    verbose=self.model_verbose,
                     **self.generation_kwargs
                 )
                 return llm
@@ -88,8 +93,8 @@ class BaseAgent(ABC):
                     system_prompt=self.agent_system_prompt,
                     temperature=self.temperature,
                     context_window=self.context_window,
-                    max_new_tokens=self.max_tokens,
                     is_tool_use_model=self.is_tool_use_model,
+                    verbose=self.model_verbose,
                     **self.generation_kwargs,
                 )
                 return llm

@@ -85,6 +85,7 @@ class LlamaCPPModel(BaseLLM):
             stop=stop,
             json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
+            verbose=verbose
         )
         self.model_name = model_name
         self.chat_format = chat_format
@@ -148,10 +149,10 @@ class LlamaCPPModel(BaseLLM):
 
                 Example response structure ferom the LlamaCPP client:
                 ```
-                {'id': 'chatcmpl-7010bf70-e1d5-4621-a1e1-da18e2643641',
+                {'id': 'chatcmpl-...',
                 'object': 'chat.completion',
                 'created': 1726547058,
-                'model': '/home/ostrich/.cache/huggingface/hub/models--meetkai--functionary-small-v2.4-GGUF/snapshots/a0d171eb78e02a58858c464e278234afbcf85c5c/./functionary-small-v2.4.Q4_0.gguf',
+                'model': '/home/ostrich/.cache/huggingface/hub/...
                 'choices': [{'index': 0,
                 'logprobs': None,
                 'message': {'role': 'assistant',
@@ -162,6 +163,9 @@ class LlamaCPPModel(BaseLLM):
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
+
+        if self.verbose:
+            print(f"Input: {messages}")
 
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []
@@ -174,7 +178,8 @@ class LlamaCPPModel(BaseLLM):
                 tool_choice='auto',
                 **self.generation_kwargs,
             )
-            print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+            if self.verbose:
+                print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             model_response = client_response['choices'][0]['message']
             # get the tool_call response & extract the tool name
             # Notify the user if no tool is used.
@@ -205,7 +210,8 @@ class LlamaCPPModel(BaseLLM):
                 tool_choice="auto",
                 **self.generation_kwargs,
             )
-            print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+            if self.verbose:
+                print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the model_response
             model_response = client_response['choices'][0]['message']
             # get the message content

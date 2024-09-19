@@ -1,5 +1,8 @@
 import datetime as dt
 # Definition of the system prompts
+# NOTE: convert to jinja prompt templates to integrate tools and messages effectively.
+
+AGENT_SIMPLE_PROMPT = """You are a helpful assistant"""
 
 AGENT_SYSTEM_PROMPT = """
 Today's Date: {date}

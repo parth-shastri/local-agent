@@ -15,6 +15,7 @@ class BaseLLM(ABC):
         stop=None,
         json_mode: bool = False,
         is_tool_use_model=True,
+        verbose: bool = False
     ):
         self.temperature = temperature
         self.context_length = context_window
@@ -24,6 +25,7 @@ class BaseLLM(ABC):
         self.stop = stop
         self.json_mode = json_mode
         self.is_tool_use_model = is_tool_use_model
+        self.verbose = verbose
 
     def convert_messages(
         self,
@@ -79,4 +81,5 @@ class BaseLLM(ABC):
 
     @abstractmethod
     def chat():
+        """The chat interface of the model with / without tool use"""
         pass

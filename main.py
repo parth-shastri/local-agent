@@ -15,12 +15,14 @@ def get_args():
     parser.add_argument("--model_path", "-mp", type=str, default="meta-llama/llama3.1-8b", help="The huggingface repo-id/ model_path to use, (only used in case llama_cpp is the model_service)")
     parser.add_argument("--model_name", '-m', type=str, default="llama3.1:latest", help="The model to use, NOTE: Download the model first using `ollama run model_name` if using ollama models.")
     parser.add_argument("--model_service", default="ollama", choices=["ollama", "llamacpp"], help="The model_service provider that hosts the model.")
+    parser.add_argument("--chat_format", type=str, default="llama3", help="The chat format to use (only for llamacpp models)")
     parser.add_argument("--is_tool_use", action="store_true", default=True, help="If the tool use capabilities of the model are natively supported by the model_service.")
     parser.add_argument("--temperature", type=float, default=0.01)
     parser.add_argument("--context_window", type=int, default=4000)
     parser.add_argument("--stop_token", "-st", type=list, help="Tokens that determine the end of sequence, may be different for different models.")
     parser.add_argument("--verbose", action='store_true', help="Displays the agent internal calls for debugging", default=False)
     parser.add_argument("--system_prompt", type=str, help="The system prompt for the model. will use the default prompt under src/prompts/prompts.py", default=None)
+    parser.add_argument("--max_tokens", type=int, help="The maximum number of tokens to generate.", default=1024)
 
     return parser.parse_args()
 
@@ -39,6 +41,10 @@ if __name__ == "__main__":
     # make a tool list
     tools = [Tool.from_function(function=getattr(model_tools, tool)) for tool in all_tools]
 
+    generation_kwargs = {
+        "max_tokens": args.max_tokens
+    }
+
     agent = FunctionCallingAgent(
         model_path=args.model_path,
         model_name=args.model_name,
@@ -46,7 +52,9 @@ if __name__ == "__main__":
         tools=tools,
         stop_token=args.stop_token,
         system_prompt=args.system_prompt,
-        is_tool_use_model=args.is_tool_use
+        is_tool_use_model=args.is_tool_use,
+        generation_kwargs=generation_kwargs,
+        model_verbose=True
     )
 
     chat_memory = None
@@ -57,6 +65,7 @@ if __name__ == "__main__":
             color="magenta",
         )
     )
+    print(f"Verbose is set to {args.verbose}")
     while True:
         # get the user input messages
 
@@ -65,14 +74,14 @@ if __name__ == "__main__":
             break
 
         # truncate the chat and calculate the tokens
-        system_tokens = calculate_token_count_of_message(agent.system_prompt)
+        system_tokens = calculate_token_count_of_message(agent.system_prompt) if agent.system_prompt else 0
         prompt_tokens = calculate_token_count_of_message(prompt, tokenizer=None)
         if chat_memory is not None:
             chat_memory, chat_memory_tokens = truncate_chat_history(chat_memory, token_limit=512, tokenizer=None)
         else:
             chat_memory_tokens = 0
 
-        if system_tokens + chat_memory_tokens + prompt_tokens > agent.context_window - 2048:
+        if system_tokens + chat_memory_tokens + prompt_tokens > agent.context_window - args.max_tokens:
             print(colored("Max token counts reached! Please start a new session.", color='red'))
             break
 

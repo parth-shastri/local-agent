@@ -1,7 +1,6 @@
 # A class to query the ollama service running on the localhost
 import json
-from llama_cpp import Llama
-from llama_cpp.llama_tokenizer import LlamaHFTokenizer
+from groq import Groq
 from src.tools.base import Tool
 from src.models.base_model import BaseLLM
 from typing import Sequence, Type, Optional, Union, Dict, Any
@@ -11,17 +10,15 @@ from termcolor import colored
 
 class GroqModel(BaseLLM):
     """
-    Groq served model.
+    Groq model.
 
-    Requires an api Key: export GROQ_API_KEY=<Your API key>
+    Install llama-cpp-python following instructions:
+        https://github.com/abetlen/llama-cpp-python
 
     """
 
     model: str = Field(
         description="The repo_id (Hugging Face), model_path for the Model"
-    )
-    model_file: str = Field(
-        description="The model_file to use from within the repo / model_path"
     )
     temperature: float = Field(
         default=0.1,
@@ -34,43 +31,38 @@ class GroqModel(BaseLLM):
         description="The maximum number of context tokens for the model.",
         gt=0,
     )
+    request_timeout: float = Field(
+        default=120.0,
+        description="The timeout for making http request to Ollama API server",
+    )
     json_mode: bool = Field(
         default=True, description="Whether to use the JSON mode of the LlamaCPP API"
     )
     is_tool_use_model: bool = Field(
         default=False, description="Whether the model is a function calling model."
     )
-    generate_kwargs: Dict[str, Any] = Field(
+    generation_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Kwargs used for generation, incl parameters like topK, temperature etc..",
     )
-    model_kwargs: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Kwargs used for model initialization, incl parameters like, Lora params, n_gpus, context parameters.",
-    )
-    verbose: bool = Field(
-        default_factory=False, description="Display the internals of the model calls."
-    )
-
-    _client: Optional[Llama] = PrivateAttr()
+    _client: Optional[Groq] = PrivateAttr()
 
     def __init__(
         self,
         model: str,
-        model_name: str,
-        chat_format: str,
         system_prompt,
         temperature=0.1,
         context_window: int = 4096,
         max_new_tokens: Optional[int] = None,
         stop=None,
+        request_timeout: int = 120.0,
         json_mode: bool = False,
         is_tool_use_model=True,
         verbose: Optional[bool] = False,
-        **generate_kwargs,
+        generation_kwargs: Optional[dict[str, Any]] = None,
     ):
         """
-        Init the LlamaCPP model with the given parameters
+        Init the Groq model with the given parameters
 
         Parameters:
             model (str): The repo id of the model to use
@@ -87,57 +79,29 @@ class GroqModel(BaseLLM):
             stop=stop,
             json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
+            verbose=verbose
         )
-        self.model_name = model_name
-        self.chat_format = chat_format
-        # Args incl model loading args like, lora params, GPU parameters etc
-        self.model_kwargs = {
-            **{"n_ctx": self.context_length, "verbose": verbose},
-        }
+
+        self.headers = {"Content-Type": "application/json"}
+        self.request_timeout = request_timeout
         # Args incl top_p, top_k, stop etc.
-        self.generate_kwargs = {
+        self.generation_kwargs = {
             **{
                 "temperature": self.temperature,
                 "max_tokens": max_new_tokens,
                 "stop": self.stop,
-            },
-            **{generate_kwargs or {}},
+            }
         }
-        # init the tokenizer
+        # override
+        self.generation_kwargs.update(generation_kwargs or {})
+        # init client
         self._client = None
-
-    @property
-    def tokenizer(self):
-        try:
-            return LlamaHFTokenizer.from_pretrained(self.model)
-        except OSError:
-            raise ValueError(
-                "Invalid model: No model path satisfies the given model, please make sure the model is a valid HuggingFace repo."
-            )
 
     @property
     def client(self):
         """Property to access the client directly (chat, generate etc.)"""
-        # currently only supports pretrained models from hugging face.
-        try:
-            self._client = Llama.from_pretrained(
-                repo_id=self.model,
-                filename=self.model_name,
-                chat_format=self.chat_format,
-                tokenizer=self.tokenizer,
-                # load all the layers on the GPU
-                n_gpu_layers=-1,
-                # thread utilization for cpu model
-                n_threads=16,
-                **self.model_kwargs,
-            )
-            return self._client
-        except Exception as e:
-            raise ValueError(
-                "Check the model_path / model_name provided"
-                "Check the chat format provided"
-                f"{e}"
-            )
+        self._client = Groq(timeout=self.request_timeout, default_headers=self.headers)
+        return self._client
 
     def chat(
         self,
@@ -150,18 +114,8 @@ class GroqModel(BaseLLM):
          Does the tool call and returns the output
          Validates the model response to follow the intended schema.
 
-         Example response structure ferom the LlamaCPP client:
+         Example response structure ferom the Groq client:
          ```
-         {'id': 'chatcmpl-7010bf70-e1d5-4621-a1e1-da18e2643641',
-         'object': 'chat.completion',
-         'created': 1726547058,
-         'model': '/home/ostrich/.cache/huggingface/hub/models--meetkai--functionary-small-v2.4-GGUF/snapshots/a0d171eb78e02a58858c464e278234afbcf85c5c/./functionary-small-v2.4.Q4_0.gguf',
-         'choices': [{'index': 0,
-         'logprobs': None,
-         'message': {'role': 'assistant',
-         'content': ...},
-         'finish_reason': 'stop'}],
-         'usage': {'prompt_tokens': 537, 'completion_tokens': 17, 'total_tokens': 551}}
          ```
         """
         # format the messages according to requirement
@@ -176,7 +130,7 @@ class GroqModel(BaseLLM):
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
-                **self.generate_kwargs,
+                **self.generation_kwargs,
             )
             print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             model_response = client_response["choices"][0]["message"]
@@ -207,7 +161,7 @@ class GroqModel(BaseLLM):
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
-                **self.generate_kwargs,
+                **self.generation_kwargs,
             )
             print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the model_response

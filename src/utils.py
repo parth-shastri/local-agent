@@ -1,11 +1,11 @@
 from typing import Union, Optional
-from transformers import AutoTokenizer, PretrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from collections import deque
 
 
 def calculate_token_count_of_message(
     message: Union[str, dict],
-    tokenizer: Optional[Union[str, PretrainedTokenizerBase]] = None,
+    tokenizer: Optional[Union[str, PreTrainedTokenizerBase]] = None,
 ):
     """
     Given a list of messages in openai format, calculate the total token count of the messages.
@@ -35,7 +35,7 @@ def calculate_token_count_of_message(
 def truncate_chat_history(
     messages,
     token_limit=1536,
-    tokenizer: Optional[Union[str, PretrainedTokenizerBase]] = None,
+    tokenizer: Optional[Union[str, PreTrainedTokenizerBase]] = None,
 ):
     """
     Limits the chat history to given token_limit.
