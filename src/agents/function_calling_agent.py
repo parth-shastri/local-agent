@@ -110,8 +110,8 @@ class FunctionCallingAgent(BaseAgent):
                 if tool_calls := response.get('tool_calls', []):
                     # call the tool
                     # NOTE: implement sequential tool call in case multiple tool calls are required.
-                    tool_name = tool_calls[0]['function']['name']
-                    tool_output = self._call_function(self.tool_dict[tool_name], tool_calls[0])
+                    tool_name = tool_calls[-1]['function']['name']
+                    tool_output = self._call_function(self.tool_dict[tool_name], tool_calls[-1])
 
                     # either return the response as it is or finalize it before returning
                     # Add the previous response to the chat_history as well

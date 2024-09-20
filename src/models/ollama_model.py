@@ -194,9 +194,9 @@ class OllamaModel(BaseLLM):
                 ] += "\nDisclaimer: The output was generated without using any tools."
                 return response
 
-            tool_name = tool_response[0]["function"]["name"]
+            tool_name = tool_response[-1]["function"]["name"]
             # get the function args to call the function later.
-            tool_arguments = tool_response[0]["function"]["arguments"]
+            tool_arguments = tool_response[-1]["function"]["arguments"]
             # validate the response
             called_tool = tool_dict[tool_name]
             args = self._validate_structured_response(

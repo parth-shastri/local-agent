@@ -2,6 +2,7 @@
 import json
 from llama_cpp import Llama
 from llama_cpp.llama_tokenizer import LlamaHFTokenizer
+from llama_cpp.llama_chat_format import Jinja2ChatFormatter
 from src.tools.base import Tool
 from src.models.base_model import BaseLLM
 from typing import Sequence, Type, Optional, Union, Dict, Any
@@ -21,7 +22,9 @@ class LlamaCPPModel(BaseLLM):
     model: str = Field(
         description="The repo_id (Hugging Face), model_path for the Model"
     )
-    model_file: str = Field(description="The model_file to use from within the repo / model_path")
+    model_file: str = Field(
+        description="The model_file to use from within the repo / model_path"
+    )
     temperature: float = Field(
         default=0.1,
         description="The temperature to use for sampling.",
@@ -40,14 +43,15 @@ class LlamaCPPModel(BaseLLM):
         default=False, description="Whether the model is a function calling model."
     )
     generation_kwargs: Dict[str, Any] = Field(
-        default_factory=dict, description="Kwargs used for generation, incl parameters like topK, temperature etc.."
+        default_factory=dict,
+        description="Kwargs used for generation, incl parameters like topK, temperature etc..",
     )
     model_kwargs: Dict[str, Any] = Field(
-        default_factory=dict, description="Kwargs used for model initialization, incl parameters like, Lora params, n_gpus, context parameters."
+        default_factory=dict,
+        description="Kwargs used for model initialization, incl parameters like, Lora params, n_gpus, context parameters.",
     )
     verbose: bool = Field(
-        default_factory=False,
-        description="Display the internals of the model calls."
+        default_factory=False, description="Display the internals of the model calls."
     )
 
     _client: Optional[Llama] = PrivateAttr()
@@ -65,7 +69,7 @@ class LlamaCPPModel(BaseLLM):
         json_mode: bool = False,
         is_tool_use_model=True,
         verbose: Optional[bool] = False,
-        generation_kwargs: Optional[dict[str, Any]] = None
+        generation_kwargs: Optional[dict[str, Any]] = None,
     ):
         """
         Init the LlamaCPP model with the given parameters
@@ -85,7 +89,7 @@ class LlamaCPPModel(BaseLLM):
             stop=stop,
             json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
-            verbose=verbose
+            verbose=verbose,
         )
         self.model_name = model_name
         self.chat_format = chat_format
@@ -95,7 +99,11 @@ class LlamaCPPModel(BaseLLM):
         }
         # Args incl top_p, top_k, stop etc.
         self.generation_kwargs = {
-            **{"temperature": self.temperature, "max_tokens": max_new_tokens, "stop": self.stop}
+            **{
+                "temperature": self.temperature,
+                "max_tokens": max_new_tokens,
+                "stop": self.stop,
+            }
         }
         # override
         self.generation_kwargs.update(generation_kwargs or {})
@@ -108,7 +116,9 @@ class LlamaCPPModel(BaseLLM):
         try:
             return LlamaHFTokenizer.from_pretrained(self.model)
         except OSError:
-            raise ValueError("Invalid model: No model path satisfies the given model, please make sure the model is a valid HuggingFace repo.")
+            raise ValueError(
+                "Invalid model: No model path satisfies the given model, please make sure the model is a valid HuggingFace repo."
+            )
 
     @property
     def client(self):
@@ -122,6 +132,16 @@ class LlamaCPPModel(BaseLLM):
                 repo_id=self.model,
                 filename=self.model_name,
                 chat_format=self.chat_format,
+                chat_handler=(
+                    Jinja2ChatFormatter(
+                        template=self.tokenizer.hf_tokenizer.chat_template,
+                        eos_token=self.tokenizer.hf_tokenizer.eos_token,
+                        bos_token=self.tokenizer.hf_tokenizer.bos_token,
+                    ).to_chat_handler()
+                    if not self.chat_format
+                    else None
+                ),
+                response_format="text" if not self.json_mode else "json_object",
                 tokenizer=self.tokenizer,
                 # load all the layers on the GPU
                 n_gpu_layers=-1,
@@ -143,23 +163,23 @@ class LlamaCPPModel(BaseLLM):
         tools: Optional[Sequence[Type[Tool]]] = None,
     ):
         """
-               Chat with the model
-                Does the tool call and returns the output
-                Validates the model response to follow the intended schema.
+        Chat with the model
+         Does the tool call and returns the output
+         Validates the model response to follow the intended schema.
 
-                Example response structure ferom the LlamaCPP client:
-                ```
-                {'id': 'chatcmpl-...',
-                'object': 'chat.completion',
-                'created': 1726547058,
-                'model': '/home/ostrich/.cache/huggingface/hub/...
-                'choices': [{'index': 0,
-                'logprobs': None,
-                'message': {'role': 'assistant',
-                'content': ...},
-                'finish_reason': 'stop'}],
-                'usage': {'prompt_tokens': 537, 'completion_tokens': 17, 'total_tokens': 551}}
-                ```
+         Example response structure ferom the LlamaCPP client:
+         ```
+         {'id': 'chatcmpl-...',
+         'object': 'chat.completion',
+         'created': 1726547058,
+         'model': '/home/ostrich/.cache/huggingface/hub/...
+         'choices': [{'index': 0,
+         'logprobs': None,
+         'message': {'role': 'assistant',
+         'content': ...},
+         'finish_reason': 'stop'}],
+         'usage': {'prompt_tokens': 537, 'completion_tokens': 17, 'total_tokens': 551}}
+         ```
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
@@ -175,12 +195,12 @@ class LlamaCPPModel(BaseLLM):
             client_response = self.client.create_chat_completion(
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
-                tool_choice='auto',
+                tool_choice="auto",
                 **self.generation_kwargs,
             )
             if self.verbose:
                 print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
-            model_response = client_response['choices'][0]['message']
+            model_response = client_response["choices"][0]["message"]
             # get the tool_call response & extract the tool name
             # Notify the user if no tool is used.
             tool_response = model_response.get("tool_calls", [])
@@ -194,9 +214,9 @@ class LlamaCPPModel(BaseLLM):
                 return response
 
             # handle only a single tool call.
-            tool_name = tool_response[0]["function"]["name"]
+            tool_name = tool_response[-1]["function"]["name"]
             # get the function args to call the function later.
-            tool_arguments = tool_response[0]["function"]["arguments"]
+            tool_arguments = tool_response[-1]["function"]["arguments"]
             # validate the response
             called_tool = tool_dict[tool_name]
             args = self._validate_structured_response(
@@ -213,7 +233,7 @@ class LlamaCPPModel(BaseLLM):
             if self.verbose:
                 print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the model_response
-            model_response = client_response['choices'][0]['message']
+            model_response = client_response["choices"][0]["message"]
             # get the message content
             content = model_response["content"]
 

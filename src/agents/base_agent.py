@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Callable, Union, Literal
 from src.models.ollama_model import OllamaModel
+from src.models.groq_model import GroqModel
 from src.models.llamacpp_model import LlamaCPPModel
 from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT
 from src.tools.base import Tool
@@ -100,6 +101,23 @@ class BaseAgent(ABC):
                 return llm
             except ValueError as e:
                 raise ValueError(f"Check the model_name /model_path, chat_format arguments for llamacpp. {e}")
+        elif self.model_service == "groq":
+            try:
+                llm = GroqModel(
+                    model=self.model_name,
+                    system_prompt=self.agent_system_prompt,
+                    temperature=self.temperature,
+                    context_window=self.context_window,
+                    stop=self.stop_token,
+                    is_tool_use_model=self.is_tool_use_model,
+                    verbose=self.model_verbose,
+                    **self.generation_kwargs
+                )
+                return llm
+            except ValueError as e:
+                raise ValueError(
+                    f"Check the model_name for groq, chat_format arguments: {e}"
+                )
         else:
             raise ValueError(
                 f"Can only serve locally with [ollama, llamacpp] currently, found model_service={self.model_service}"

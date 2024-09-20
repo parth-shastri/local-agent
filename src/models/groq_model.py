@@ -96,11 +96,15 @@ class GroqModel(BaseLLM):
         self.generation_kwargs.update(generation_kwargs or {})
         # init client
         self._client = None
+        self._init_client()
+
+    def _init_client(self):
+        """Property to access the client directly (chat, generate etc.)"""
+        self._client = Groq(timeout=self.request_timeout, default_headers=self.headers)
 
     @property
     def client(self):
         """Property to access the client directly (chat, generate etc.)"""
-        self._client = Groq(timeout=self.request_timeout, default_headers=self.headers)
         return self._client
 
     def chat(
@@ -126,14 +130,16 @@ class GroqModel(BaseLLM):
         tool_dict = dict(map(lambda x: (x.tool_name, x), tools))
 
         if self.is_tool_use_model:
-            client_response = self.client.create_chat_completion(
+            client_response = self.client.chat.completions.create(
+                model=self.model,
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
+                response_format={"type": "json_object"} if self.json_mode else None,
                 **self.generation_kwargs,
             )
             print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
-            model_response = client_response["choices"][0]["message"]
+            model_response = client_response.to_dict()['choices'][0]['message']
             # get the tool_call response & extract the tool name
             # Notify the user if no tool is used.
             tool_response = model_response.get("tool_calls", [])
@@ -157,26 +163,29 @@ class GroqModel(BaseLLM):
             )
             response = model_response
         else:
-            client_response = self.client.create_chat_completion(
+            client_response = self.client.chat.completions.create(
+                model=self.model,
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
-                **self.generation_kwargs,
+                response_format={"type": "json_object"},
+                ** self.generation_kwargs,
             )
             print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the model_response
-            model_response = client_response["choices"][0]["message"]
+            model_response = client_response.to_dict()["choices"][0]["message"]
             # get the message content
             content = model_response["content"]
 
             # The case if the model is not a tool-call supported model on ollama but..
             # ..we have specified the proper system prompt
-            if tools:
-                # parse content to json .loads ?
-                content = json.loads(content)
-                # logic to get the tool call from the response
-                tool_response = content.get("tool_input")
-                tool_name = content.get("tool_choice")
+            # parse content to json .loads ?
+            content = json.loads(content)
+            # logic to get the tool call from the response
+            tool_response = content.get("tool_input")
+            tool_name = content.get("tool_choice")
+
+            if tools and tool_name:
                 # get the called tool
                 called_tool = tool_dict[tool_name]
                 # validate the response
@@ -192,5 +201,5 @@ class GroqModel(BaseLLM):
                     ],
                 }
 
-            response = model_response
+            response = {"role": model_response["role"], "content": tool_response}
         return response
