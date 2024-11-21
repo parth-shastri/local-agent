@@ -78,7 +78,7 @@ class Tool(BaseModel):
         return parameters
 
     def to_openai_tool(self, skip_length_check: bool = False):
-        """Convert to openai tool calling format (Apparently thats what Ollama takes in as well.)"""
+        """Convert to openai tool calling format (Apparently thats what Ollama takes in as well along with most other providers.)"""
         if not skip_length_check and len(self.tool_description) > 1024:
             raise ValueError(
                 "Tool description exceeds the length of maximum characters. "

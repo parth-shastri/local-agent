@@ -12,8 +12,7 @@ class GroqModel(BaseLLM):
     """
     Groq model.
 
-    Install llama-cpp-python following instructions:
-        https://github.com/abetlen/llama-cpp-python
+    Install groq model using `pip install groq`
 
     """
 
@@ -35,9 +34,6 @@ class GroqModel(BaseLLM):
         default=120.0,
         description="The timeout for making http request to Ollama API server",
     )
-    json_mode: bool = Field(
-        default=True, description="Whether to use the JSON mode of the LlamaCPP API"
-    )
     is_tool_use_model: bool = Field(
         default=False, description="Whether the model is a function calling model."
     )
@@ -56,10 +52,10 @@ class GroqModel(BaseLLM):
         max_new_tokens: Optional[int] = None,
         stop=None,
         request_timeout: int = 120.0,
-        json_mode: bool = False,
         is_tool_use_model=True,
         verbose: Optional[bool] = False,
         generation_kwargs: Optional[dict[str, Any]] = None,
+        **kwargs
     ):
         """
         Init the Groq model with the given parameters
@@ -77,7 +73,6 @@ class GroqModel(BaseLLM):
             temperature=temperature,
             context_window=context_window,
             stop=stop,
-            json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
             verbose=verbose
         )
@@ -112,19 +107,21 @@ class GroqModel(BaseLLM):
         input: Union[str, dict[str, str]],
         chat_history: Optional[Sequence[dict]] = None,
         tools: Optional[Sequence[Type[Tool]]] = None,
+        json_mode: bool = False
     ):
         """
         Chat with the model
          Does the tool call and returns the output
          Validates the model response to follow the intended schema.
 
-         Example response structure ferom the Groq client:
+         Example response structure from the Groq client:
          ```
          ```
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
-
+        if self.verbose:
+            print(f"Input: {messages}")
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []
         tool_dict = dict(map(lambda x: (x.tool_name, x), tools))
@@ -135,7 +132,7 @@ class GroqModel(BaseLLM):
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
-                response_format={"type": "json_object"} if self.json_mode else None,
+                response_format={"type": "json_object"} if json_mode else None,
                 **self.generation_kwargs,
             )
             print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
@@ -145,6 +142,7 @@ class GroqModel(BaseLLM):
             tool_response = model_response.get("tool_calls", [])
 
             # if the tool response is None
+            # TODO: remove the disclaimer once the dev is complete
             if not tool_response:
                 response = model_response
                 response[
@@ -152,15 +150,17 @@ class GroqModel(BaseLLM):
                 ] += "\n**Disclaimer: The output was generated without using any tools."
                 return response
 
-            # handle only a single tool call.
-            tool_name = tool_response[0]["function"]["name"]
-            # get the function args to call the function later.
-            tool_arguments = tool_response[0]["function"]["arguments"]
-            # validate the response
-            called_tool = tool_dict[tool_name]
-            args = self._validate_structured_response(
-                response=tool_arguments, called_tool=called_tool
-            )
+            # handle all the tool calls
+            for tool in tool_response:
+                tool_name = tool["function"]["name"]
+                # get the function args to call the function later.
+                tool_arguments = tool["function"]["arguments"]
+                # validate the response
+                called_tool = tool_dict[tool_name]
+                args = self._validate_structured_response(
+                    response=tool_arguments, called_tool=called_tool
+                )
+
             response = model_response
         else:
             client_response = self.client.chat.completions.create(
@@ -177,7 +177,7 @@ class GroqModel(BaseLLM):
             # get the message content
             content = model_response["content"]
 
-            # The case if the model is not a tool-call supported model on ollama but..
+            # The case if the model is not a tool-call supported model but..
             # ..we have specified the proper system prompt
             # parse content to json .loads ?
             content = json.loads(content)

@@ -1,10 +1,9 @@
 # Create a base agent class that has the following functionality
-#   1. think - is the generate text method (generates the response dictionary)
+#   1. chat - is the generate text method (generates the response dictionary)
+import os
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Callable, Union, Literal
-from src.models.ollama_model import OllamaModel
-from src.models.groq_model import GroqModel
-from src.models.llamacpp_model import LlamaCPPModel
+from src.models.model_services import MODEL_SERVICES
 from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT
 from src.tools.base import Tool
 
@@ -16,7 +15,6 @@ class BaseAgent(ABC):
         model_name: str,
         model_service: Literal["ollama", "llamacpp", "groq"],
         tools: Optional[Union[Sequence[Callable], Sequence[Tool]]] = [],
-        model_path: Optional[str] = None,
         chat_format: Optional[str] = None,
         temperature: float = 0.0,
         context_window: int = 4096,
@@ -31,7 +29,6 @@ class BaseAgent(ABC):
 
         Parameters:
         """
-        self.model_path = model_path
         self.model_name = model_name
         self.chat_format = chat_format
         self.model_service = model_service
@@ -68,57 +65,26 @@ class BaseAgent(ABC):
             )
 
     def _init_llm(self):
-        if self.model_service == "ollama":
-            try:
-                llm = OllamaModel(
-                    model=self.model_name,
-                    system_prompt=self.agent_system_prompt,
-                    temperature=self.temperature,
-                    context_window=self.context_window,
-                    stop=self.stop_token,
-                    is_tool_use_model=self.is_tool_use_model,
-                    verbose=self.model_verbose,
-                    **self.generation_kwargs
-                )
-                return llm
-            except ValueError as e:
-                raise ValueError(
-                    f"Check the model_name for ollama, chat_format arguments: {e}"
-                )
-        elif self.model_service == "llamacpp":
-            try:
-                llm = LlamaCPPModel(
-                    model=self.model_path,
-                    model_name=self.model_name,
-                    chat_format=self.chat_format,
-                    system_prompt=self.agent_system_prompt,
-                    temperature=self.temperature,
-                    context_window=self.context_window,
-                    is_tool_use_model=self.is_tool_use_model,
-                    verbose=self.model_verbose,
-                    **self.generation_kwargs,
-                )
-                return llm
-            except ValueError as e:
-                raise ValueError(f"Check the model_name /model_path, chat_format arguments for llamacpp. {e}")
-        elif self.model_service == "groq":
-            try:
-                llm = GroqModel(
-                    model=self.model_name,
-                    system_prompt=self.agent_system_prompt,
-                    temperature=self.temperature,
-                    context_window=self.context_window,
-                    stop=self.stop_token,
-                    is_tool_use_model=self.is_tool_use_model,
-                    verbose=self.model_verbose,
-                    **self.generation_kwargs
-                )
-                return llm
-            except ValueError as e:
-                raise ValueError(
-                    f"Check the model_name for groq, chat_format arguments: {e}"
-                )
-        else:
+        try:
+            # define the kwargs (are needed for the LlamaCPP model service)
+            kwargs = dict(
+                n_threads=os.cpu_count() - 4,
+                chat_format=self.chat_format
+            )
+            service = MODEL_SERVICES[self.model_service]
+            llm = service(
+                model=self.model_name,
+                system_prompt=self.agent_system_prompt,
+                temperature=self.temperature,
+                context_window=self.context_window,
+                stop=self.stop_token,
+                is_tool_use_model=self.is_tool_use_model,
+                verbose=self.model_verbose,
+                **self.generation_kwargs,
+                **kwargs,
+            )
+            return llm
+        except KeyError:
             raise ValueError(
                 f"Can only serve locally with [ollama, llamacpp] currently, found model_service={self.model_service}"
             )
@@ -153,7 +119,7 @@ class BaseAgent(ABC):
         # Add conditionals here to add support for other models
         # the message loop
         if self.model_service == "ollama":
-            model_instance = OllamaModel(
+            model_instance = MODEL_SERVICES["ollama"](
                 model=self.model_name,
                 system_prompt=self.agent_system_prompt,
                 temperature=self.temperature,

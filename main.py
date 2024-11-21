@@ -45,7 +45,7 @@ if __name__ == "__main__":
     all_tools = model_tools.__all__
 
     # make a tool list
-    tools = [Tool.from_function(function=getattr(model_tools, tool)) for tool in all_tools]
+    tools = [Tool.from_function(function=getattr(model_tools, tool), return_direct=False) for tool in all_tools]
 
     generation_kwargs = {
         "max_tokens": args.max_tokens

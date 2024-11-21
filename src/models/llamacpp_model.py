@@ -1,5 +1,6 @@
 # A class to query the ollama service running on the localhost
 import json
+import os
 from llama_cpp import Llama
 from llama_cpp.llama_tokenizer import LlamaHFTokenizer
 from llama_cpp.llama_chat_format import Jinja2ChatFormatter
@@ -36,9 +37,6 @@ class LlamaCPPModel(BaseLLM):
         description="The maximum number of context tokens for the model.",
         gt=0,
     )
-    json_mode: bool = Field(
-        default=True, description="Whether to use the JSON mode of the LlamaCPP API"
-    )
     is_tool_use_model: bool = Field(
         default=False, description="Whether the model is a function calling model."
     )
@@ -59,24 +57,21 @@ class LlamaCPPModel(BaseLLM):
     def __init__(
         self,
         model: str,
-        model_name: str,
-        chat_format: str,
         system_prompt,
         temperature=0.1,
         context_window: int = 4096,
         max_new_tokens: Optional[int] = None,
         stop=None,
-        json_mode: bool = False,
         is_tool_use_model=True,
         verbose: Optional[bool] = False,
         generation_kwargs: Optional[dict[str, Any]] = None,
+        **kwargs
     ):
         """
         Init the LlamaCPP model with the given parameters
 
         Parameters:
-            model (str): The repo id of the model to use
-            model_name (str): The model filename to use from within the repo
+            model (str): The the `repo_id/model_name` of the model to use.
             system_prompt (str): The system prompt to use.
             temperature (float): The temperature setting for the model.
             stop (str): The stop token for the model.
@@ -87,12 +82,14 @@ class LlamaCPPModel(BaseLLM):
             temperature=temperature,
             context_window=context_window,
             stop=stop,
-            json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
             verbose=verbose,
         )
-        self.model_name = model_name
-        self.chat_format = chat_format
+        # override the model parameters.
+        self.model, self.model_name = model.split("/")
+        # look for the chat format on the llamacpp docs: https://llama-cpp-python.readthedocs.io/en/latest/api-reference/#llama_cpp.Llama
+        self.chat_format = kwargs.pop("chat_format", 'functionary-v2')
+        self.n_threads = kwargs.pop("n_threads", os.cpu_count() - 4)
         # Args incl model loading args like, lora params, GPU parameters etc
         self.model_kwargs = {
             **{"n_ctx": self.context_length, "verbose": verbose},
@@ -141,12 +138,12 @@ class LlamaCPPModel(BaseLLM):
                     if not self.chat_format
                     else None
                 ),
-                response_format="text" if not self.json_mode else "json_object",
+                response_format="json_object",
                 tokenizer=self.tokenizer,
                 # load all the layers on the GPU
                 n_gpu_layers=-1,
                 # thread utilization for cpu model
-                n_threads=16,
+                n_threads=self.n_threads,
                 **self.model_kwargs,
             )
         except Exception as e:
@@ -161,6 +158,7 @@ class LlamaCPPModel(BaseLLM):
         input: Union[str, dict[str, str]],
         chat_history: Optional[Sequence[dict]] = None,
         tools: Optional[Sequence[Type[Tool]]] = None,
+        json_mode: bool = False
     ):
         """
         Chat with the model
@@ -196,6 +194,7 @@ class LlamaCPPModel(BaseLLM):
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
+                response_format={"type": "json_object"} if json_mode else None,
                 **self.generation_kwargs,
             )
             if self.verbose:
@@ -213,21 +212,24 @@ class LlamaCPPModel(BaseLLM):
                 ] += "\n**Disclaimer: The output was generated without using any tools."
                 return response
 
-            # handle only a single tool call.
-            tool_name = tool_response[-1]["function"]["name"]
-            # get the function args to call the function later.
-            tool_arguments = tool_response[-1]["function"]["arguments"]
-            # validate the response
-            called_tool = tool_dict[tool_name]
-            args = self._validate_structured_response(
-                response=tool_arguments, called_tool=called_tool
-            )
+            # Iterate through all the tools calls & validate
+            for tool in tool_response:
+                # ===== This chunk of code is validating the tool response against schema ===
+                tool_name = tool["function"]["name"]
+                # get the function args to call the function later.
+                tool_arguments = tool["function"]["arguments"]
+                # validate the response
+                called_tool = tool_dict[tool_name]
+                args = self._validate_structured_response(
+                    response=tool_arguments, called_tool=called_tool
+                )
             response = model_response
         else:
             client_response = self.client.create_chat_completion(
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
+                response_format={"type": 'json_object'},
                 **self.generation_kwargs,
             )
             if self.verbose:

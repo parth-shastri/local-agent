@@ -37,9 +37,6 @@ class OllamaModel(BaseLLM):
         default=120.0,
         description="The timeout for making http request to Ollama API server",
     )
-    json_mode: bool = Field(
-        default=True, description="Whether to use the JSON model of the OllamaAPI"
-    )
     is_tool_use_model: bool = Field(
         default=False, description="Whether the model is a function calling model."
     )
@@ -67,11 +64,11 @@ class OllamaModel(BaseLLM):
         context_window: int = 4096,
         stop=None,
         url="http://localhost:11434",
-        json_mode: bool = False,
         is_tool_use_model=True,
         verbose=False,
         # optional
-        generation_kwargs: Optional[dict[str, Any]] = None
+        generation_kwargs: Optional[dict[str, Any]] = None,
+        **kwargs
     ):
         """
         Init the OllamaModel with the given parameters
@@ -88,7 +85,6 @@ class OllamaModel(BaseLLM):
             temperature=temperature,
             context_window=context_window,
             stop=stop,
-            json_mode=json_mode,
             is_tool_use_model=is_tool_use_model,
             verbose=verbose
         )
@@ -107,9 +103,9 @@ class OllamaModel(BaseLLM):
 
     def _check_model_name(self):
         """Check if the given model name is served through ollama"""
-        model_list = map(lambda x: x["name"], ollama.list()['models'])
+        model_list = list(map(lambda x: x["name"], ollama.list()['models']))
         if self.model not in model_list:
-            raise ValueError(f"The Ollama model not found locally, found {model_list} models try one of these or pull the model by `ollama pull {self.model_name}`")
+            raise ValueError(f"The Ollama model not found locally, found {model_list} models try one of these or pull the model by `ollama pull {self.model}`")
 
     @property
     def client(self):
@@ -117,13 +113,13 @@ class OllamaModel(BaseLLM):
         self._client = Client(host=self.url, timeout=120.0)
         return self._client
 
-    def generate_text_api_call(self, prompt):
+    def generate_text_api_call(self, prompt, json_mode):
         """
         Generates response from the Ollama model, based on the provided prompt.
         """
         payload = {
             "model": self.model,
-            "format": "json" if self.json_mode else "",
+            "format": "json" if json_mode else "",
             "prompt": prompt,
             "system_prompt": self.system_prompt,
             "stream": False,
@@ -156,6 +152,7 @@ class OllamaModel(BaseLLM):
         input: Union[str, dict[str, str]],
         chat_history: Optional[Sequence[dict]] = None,
         tools: Optional[Sequence[Type[Tool]]] = None,
+        json_mode: bool = False
     ):
         """
         Chat with the model
@@ -176,7 +173,7 @@ class OllamaModel(BaseLLM):
                 model=self.model,
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
-                format="json" if self.json_mode else "",
+                format="json" if json_mode else "",
             )
             if self.verbose:
                 print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
@@ -193,15 +190,17 @@ class OllamaModel(BaseLLM):
                     "content"
                 ] += "\nDisclaimer: The output was generated without using any tools."
                 return response
-
-            tool_name = tool_response[-1]["function"]["name"]
-            # get the function args to call the function later.
-            tool_arguments = tool_response[-1]["function"]["arguments"]
-            # validate the response
-            called_tool = tool_dict[tool_name]
-            args = self._validate_structured_response(
-                response=tool_arguments, called_tool=called_tool
-            )
+            # Iterate through all the tools calls & validate
+            for tool in tool_response:
+                # ===== This chunk of code is validating the tool response against schema ===
+                tool_name = tool["function"]["name"]
+                # get the function args to call the function later.
+                tool_arguments = tool["function"]["arguments"]
+                # validate the response
+                called_tool = tool_dict[tool_name]
+                args = self._validate_structured_response(
+                    response=tool_arguments, called_tool=called_tool
+                )
             response = model_response
         else:
             client_response = self.client.chat(

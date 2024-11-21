@@ -4,4 +4,4 @@
 # export PATH="$PATH:/home/ostrich/.local/bin"
 
 # RUN the agent using ollama
-python main.py --model_name "llama3.1:latest" --model_service ollama --verbose --system_prompt "You are a helpful assistant agent" 
+python main.py --model_name "qwen2.5:3b" --model_service ollama --verbose --system_prompt "You are a helpful assistant agent"

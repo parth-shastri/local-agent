@@ -13,7 +13,6 @@ class BaseLLM(ABC):
         temperature=0,
         context_window: int = 4096,
         stop=None,
-        json_mode: bool = False,
         is_tool_use_model=True,
         verbose: bool = False
     ):
@@ -23,7 +22,6 @@ class BaseLLM(ABC):
         self.system_prompt = system_prompt
 
         self.stop = stop
-        self.json_mode = json_mode
         self.is_tool_use_model = is_tool_use_model
         self.verbose = verbose
 
@@ -34,7 +32,7 @@ class BaseLLM(ABC):
     ):
         """
         Convert messages intp OpenAI format (This is what ollama accepts)
-            Order: sys_message - chat_history - input
+            Order: sys_message -> chat_history -> input
         """
         messages = []
         # input message handling.
