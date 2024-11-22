@@ -3,6 +3,7 @@
 import os
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Callable, Union, Literal
+from src.agents import logger
 from src.models.model_services import MODEL_SERVICES
 from src.prompts.system_prompts import AGENT_SYSTEM_PROMPT
 from src.tools.base import Tool
@@ -21,7 +22,6 @@ class BaseAgent(ABC):
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_tool_use_model: bool = True,
-        model_verbose: bool = False,
         **generation_kwargs,
     ):
         """
@@ -34,7 +34,6 @@ class BaseAgent(ABC):
         self.model_service = model_service
         self.agent_system_prompt = (system_prompt or AGENT_SYSTEM_PROMPT) if not is_tool_use_model else system_prompt
         self.is_tool_use_model = is_tool_use_model
-        self.model_verbose = model_verbose    # The verbosity of the model. (Display additional responses from the model)
 
         # llm arguments
         self.temperature = temperature
@@ -79,12 +78,12 @@ class BaseAgent(ABC):
                 context_window=self.context_window,
                 stop=self.stop_token,
                 is_tool_use_model=self.is_tool_use_model,
-                verbose=self.model_verbose,
                 **self.generation_kwargs,
                 **kwargs,
             )
             return llm
-        except KeyError:
+        except KeyError as e:
+            logger.error(e)
             raise ValueError(
                 f"Can only serve locally with [ollama, llamacpp] currently, found model_service={self.model_service}"
             )

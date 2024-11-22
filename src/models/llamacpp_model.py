@@ -4,6 +4,7 @@ import os
 from llama_cpp import Llama
 from llama_cpp.llama_tokenizer import LlamaHFTokenizer
 from llama_cpp.llama_chat_format import Jinja2ChatFormatter
+from src.models import logger
 from src.tools.base import Tool
 from src.models.base_model import BaseLLM
 from typing import Sequence, Type, Optional, Union, Dict, Any
@@ -65,7 +66,7 @@ class LlamaCPPModel(BaseLLM):
         is_tool_use_model=True,
         verbose: Optional[bool] = False,
         generation_kwargs: Optional[dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Init the LlamaCPP model with the given parameters
@@ -83,12 +84,11 @@ class LlamaCPPModel(BaseLLM):
             context_window=context_window,
             stop=stop,
             is_tool_use_model=is_tool_use_model,
-            verbose=verbose,
         )
         # override the model parameters.
-        self.model, self.model_name = model.split("/")
+        self.model, self.model_name = model.split(":")
         # look for the chat format on the llamacpp docs: https://llama-cpp-python.readthedocs.io/en/latest/api-reference/#llama_cpp.Llama
-        self.chat_format = kwargs.pop("chat_format", 'functionary-v2')
+        self.chat_format = kwargs.pop("chat_format", None)
         self.n_threads = kwargs.pop("n_threads", os.cpu_count() - 4)
         # Args incl model loading args like, lora params, GPU parameters etc
         self.model_kwargs = {
@@ -158,7 +158,7 @@ class LlamaCPPModel(BaseLLM):
         input: Union[str, dict[str, str]],
         chat_history: Optional[Sequence[dict]] = None,
         tools: Optional[Sequence[Type[Tool]]] = None,
-        json_mode: bool = False
+        json_mode: bool = False,
     ):
         """
         Chat with the model
@@ -182,8 +182,7 @@ class LlamaCPPModel(BaseLLM):
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
 
-        if self.verbose:
-            print(f"Input: {messages}")
+        logger.debug(colored(f"\n[MODEL INPUT]: {messages}", color="light_yellow"))
 
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []
@@ -197,8 +196,10 @@ class LlamaCPPModel(BaseLLM):
                 response_format={"type": "json_object"} if json_mode else None,
                 **self.generation_kwargs,
             )
-            if self.verbose:
-                print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+
+            logger.debug(
+                colored(f"\n[MODEL]: {client_response}\n", color="light_yellow")
+            )
             model_response = client_response["choices"][0]["message"]
             # get the tool_call response & extract the tool name
             # Notify the user if no tool is used.
@@ -229,11 +230,13 @@ class LlamaCPPModel(BaseLLM):
                 messages=messages,
                 tools=[tool.to_openai_tool() for tool in tools],
                 tool_choice="auto",
-                response_format={"type": 'json_object'},
+                response_format={"type": "json_object"},
                 **self.generation_kwargs,
             )
-            if self.verbose:
-                print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+
+            logger.debug(
+                colored(f"\n[MODEL]: {client_response}\n", color="light_yellow")
+            )
             # get the model_response
             model_response = client_response["choices"][0]["message"]
             # get the message content

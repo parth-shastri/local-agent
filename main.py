@@ -1,5 +1,7 @@
 # The main event loop to listen to user messages
 import os
+import logging
+from logging_utils.init_logging import init_logging
 from src.agents.function_calling_agent import FunctionCallingAgent
 from src.tools import model_tools
 from src.tools.base import Tool
@@ -8,16 +10,19 @@ from argparse import ArgumentParser
 from termcolor import colored
 from configs.config import GROQ_API_KEY
 
+# init logging
+init_logging("./configs/logging.json")
+logger = logging.getLogger(__name__)
+
 
 def get_args():
     """
     Command line argument parser.
     """
     parser = ArgumentParser(description="A Local Agent that has access to tools.")
-    parser.add_argument("--model_path", "-mp", type=str, default="meta-llama/llama3.1-8b", help="The huggingface repo-id/ model_path to use, (only used in case llama_cpp is the model_service)")
     parser.add_argument("--model_name", '-m', type=str, default="llama3.1:latest", help="The model to use, NOTE: Download the model first using `ollama run model_name` if using ollama models.")
     parser.add_argument("--model_service", default="ollama", choices=["ollama", "llamacpp", "groq"], help="The model_service provider that hosts the model.")
-    parser.add_argument("--chat_format", type=str, default="llama3", help="The chat format to use (only for llamacpp models)")
+    parser.add_argument("--chat_format", type=str, default=None, help="The chat format to use (only for llamacpp models)")
     parser.add_argument("--is_tool_use", action="store_true", default=True, help="If the tool use capabilities of the model are natively supported by the model_service.")
     parser.add_argument("--temperature", type=float, default=0.01)
     parser.add_argument("--context_window", type=int, default=4000)
@@ -37,10 +42,10 @@ if __name__ == "__main__":
     # check the API key if groq
     if args.model_service:
         assert os.environ.get("GROQ_API_KEY") == GROQ_API_KEY
-        print("API key matched !!")
+        logger.info("API key matched !!")
     # tools to use
     # NOTE: define any custom tools if want to use under ./src/tools/model_tools.py
-    print(f"Tools found {model_tools.__all__}")
+    logger.info(f"Tools found {model_tools.__all__}")
 
     all_tools = model_tools.__all__
 
@@ -52,7 +57,6 @@ if __name__ == "__main__":
     }
 
     agent = FunctionCallingAgent(
-        model_path=args.model_path,
         model_name=args.model_name,
         model_service=args.model_service,
         chat_format=args.chat_format,
@@ -66,17 +70,17 @@ if __name__ == "__main__":
 
     chat_memory = None
     # Main Listening loop
-    print(
+    logger.info(
         colored(
             f"Session with agent based on {args.model_name} initialized.",
             color="magenta",
         )
     )
-    print(f"Verbose is set to {args.verbose}")
+    logger.info(f"Verbose is set to {args.verbose}")
     while True:
         # get the user input messages
 
-        prompt = input("Ask me anything: ")
+        prompt = input(" >> Ask me anything: ")
         if prompt.lower() == "exit":
             break
         # truncate the chat and calculate the tokens
@@ -88,12 +92,12 @@ if __name__ == "__main__":
             chat_memory_tokens = 0
 
         if system_tokens + chat_memory_tokens + prompt_tokens > agent.context_window - args.max_tokens:
-            print(colored("Max token counts reached! Please start a new session.", color='red'))
+            logger.warning(colored("Max token counts reached! Please start a new session.", color='red'))
             break
 
         response = agent.chat(prompt, chat_history=chat_memory, max_retries=3, verbose=args.verbose)
 
-        print(response)
+        print("->  ", response)
 
         # structure the user and the response
         # add both user and assistant messages to the chat history

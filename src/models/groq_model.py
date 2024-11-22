@@ -1,6 +1,7 @@
 # A class to query the ollama service running on the localhost
 import json
 from groq import Groq
+from src.models import logger
 from src.tools.base import Tool
 from src.models.base_model import BaseLLM
 from typing import Sequence, Type, Optional, Union, Dict, Any
@@ -61,11 +62,14 @@ class GroqModel(BaseLLM):
         Init the Groq model with the given parameters
 
         Parameters:
-            model (str): The repo id of the model to use
-            model_name (str): The model filename to use from within the repo
+            model (str): the model name to use
             system_prompt (str): The system prompt to use.
             temperature (float): The temperature setting for the model.
             stop (str): The stop token for the model.
+            context_window (int): the context window of the model
+            max_new_tokens (int): the max tokens to generate
+            request_timeout: (int): the max time (s) to wait for the response
+            is_tool_use_model (bool): does the requested model support tool use
         """
         super().__init__(
             model=model,
@@ -74,7 +78,6 @@ class GroqModel(BaseLLM):
             context_window=context_window,
             stop=stop,
             is_tool_use_model=is_tool_use_model,
-            verbose=verbose
         )
 
         self.headers = {"Content-Type": "application/json"}
@@ -120,8 +123,7 @@ class GroqModel(BaseLLM):
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
-        if self.verbose:
-            print(f"Input: {messages}")
+        logger.debug(colored(f"\n[MODEL INPUT]: {messages}", color="light_yellow"))
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []
         tool_dict = dict(map(lambda x: (x.tool_name, x), tools))
@@ -135,7 +137,7 @@ class GroqModel(BaseLLM):
                 response_format={"type": "json_object"} if json_mode else None,
                 **self.generation_kwargs,
             )
-            print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+            logger.debug(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             model_response = client_response.to_dict()['choices'][0]['message']
             # get the tool_call response & extract the tool name
             # Notify the user if no tool is used.
@@ -171,7 +173,8 @@ class GroqModel(BaseLLM):
                 response_format={"type": "json_object"},
                 ** self.generation_kwargs,
             )
-            print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+
+            logger.debug(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the model_response
             model_response = client_response.to_dict()["choices"][0]["message"]
             # get the message content

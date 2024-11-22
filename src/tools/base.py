@@ -4,6 +4,7 @@ from typing import Any, Callable
 from inspect import signature
 from pydantic import create_model
 from pydantic.fields import FieldInfo
+from src.tools import logger
 
 
 def _create_function_schema(fn: Callable, name: str) -> Type[BaseModel]:
@@ -80,10 +81,12 @@ class Tool(BaseModel):
     def to_openai_tool(self, skip_length_check: bool = False):
         """Convert to openai tool calling format (Apparently thats what Ollama takes in as well along with most other providers.)"""
         if not skip_length_check and len(self.tool_description) > 1024:
-            raise ValueError(
+            err = ValueError(
                 "Tool description exceeds the length of maximum characters. "
                 "Please shorten your description or move it to prompt"
             )
+            logger.error(err)
+            raise err
 
         tool = {
             "type": "function",

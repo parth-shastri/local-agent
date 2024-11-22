@@ -14,7 +14,6 @@ class BaseLLM(ABC):
         context_window: int = 4096,
         stop=None,
         is_tool_use_model=True,
-        verbose: bool = False
     ):
         self.temperature = temperature
         self.context_length = context_window
@@ -23,7 +22,6 @@ class BaseLLM(ABC):
 
         self.stop = stop
         self.is_tool_use_model = is_tool_use_model
-        self.verbose = verbose
 
     def convert_messages(
         self,

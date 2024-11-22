@@ -3,6 +3,7 @@ import requests
 import json
 import ollama
 from ollama import Client
+from src.models import logger
 from src.tools.base import Tool
 from src.models.base_model import BaseLLM
 from typing import Sequence, Type, Optional, Union, Dict, Any
@@ -86,7 +87,6 @@ class OllamaModel(BaseLLM):
             context_window=context_window,
             stop=stop,
             is_tool_use_model=is_tool_use_model,
-            verbose=verbose
         )
         self.url = url
         self.model_generate_endpoint = url + "/api/generate"
@@ -133,12 +133,10 @@ class OllamaModel(BaseLLM):
                 headers=self.headers,
                 data=json.dumps(payload),
             )
-            if self.verbose:
-                print(f"[MODEL]: REQUEST RESPONSE: {request_response.status_code}")
+            logger.debug(f"[MODEL]: REQUEST RESPONSE: {request_response.status_code}")
             request_response_json = request_response.json()
             response = request_response_json["response"]
-            if self.verbose:
-                print(f"\n\nResponse from OllamaModel::{self.model}={response}")
+            logger.debug(f"\n\nResponse from OllamaModel::{self.model}={response}")
 
             return response
 
@@ -161,8 +159,7 @@ class OllamaModel(BaseLLM):
         """
         # format the messages according to requirement
         messages = self.convert_messages(input, chat_history)
-        if self.verbose:
-            print(f"Input: {messages}")
+        logger.debug(colored(f"\n[MODEL INPUT]: {messages}", color="light_yellow"))
 
         # create a tool_dict to map the called_tool back to tools
         tools = tools or []
@@ -175,8 +172,7 @@ class OllamaModel(BaseLLM):
                 tools=[tool.to_openai_tool() for tool in tools],
                 format="json" if json_mode else "",
             )
-            if self.verbose:
-                print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+            logger.debug(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # model response
             model_response = client_response['message']
             # get the tool_call response & extract the tool name
@@ -206,8 +202,7 @@ class OllamaModel(BaseLLM):
             client_response = self.client.chat(
                 model=self.model, messages=messages, tools=None, format="json"
             )
-            if self.verbose:
-                print(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
+            logger.debug(colored(f"\n[MODEL]: {client_response}\n", color="light_yellow"))
             # get the model response
             model_response = client_response['message']
             # get the message content

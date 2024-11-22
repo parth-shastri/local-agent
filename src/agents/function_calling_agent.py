@@ -6,6 +6,7 @@ from typing import Literal, Optional, Union, Sequence, Callable, Any
 from src.tools.base import Tool
 from pydantic import ValidationError
 from termcolor import colored
+from src.agents import logger
 
 
 class FunctionCallingAgent(BaseAgent):
@@ -22,7 +23,6 @@ class FunctionCallingAgent(BaseAgent):
         stop_token: Optional[str] = None,
         system_prompt: Optional[str] = None,
         is_tool_use_model: bool = True,
-        model_verbose: bool = False,
         **generation_kwargs,
     ):
         super().__init__(
@@ -36,7 +36,6 @@ class FunctionCallingAgent(BaseAgent):
             stop_token=stop_token,
             system_prompt=system_prompt,
             is_tool_use_model=is_tool_use_model,
-            model_verbose=model_verbose,
             **generation_kwargs,
         )
 
@@ -164,6 +163,10 @@ class FunctionCallingAgent(BaseAgent):
                     for tool in tool_calls:
                         # these tools are already validated for their schema
                         tool_name = tool["function"]["name"]
+                        if verbose:
+                            print(colored(
+                                "[AGENT]: Calling Tool: " + tool_name + "()...", color="light_green"
+                            ))
                         tool_output = self._call_function(
                             self.tool_dict[tool_name], tool
                         )
@@ -225,6 +228,7 @@ class FunctionCallingAgent(BaseAgent):
 
         # if we come out of the loop unreturned it is certain that we have exceeded the max_tries.
         if final_response is None and trial_no >= max_retries:
+            logger.error("MaxRetries exceeded for the agent!!")
             raise Exception(
                 "MaxRetries exceeded error!: Reached the max retries for the agent"
             )
