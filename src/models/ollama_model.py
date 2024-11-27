@@ -10,6 +10,7 @@ from typing import Sequence, Type, Optional, Union, Dict, Any
 from pydantic import Field, PrivateAttr
 from termcolor import colored
 
+# TODO: Port to add outlines support incase the model is not a function calling llm
 
 class OllamaModel(BaseLLM):
     """
