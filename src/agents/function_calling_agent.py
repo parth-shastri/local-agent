@@ -153,7 +153,7 @@ class FunctionCallingAgent(BaseAgent):
                 if verbose:
                     print(
                         colored(
-                            f"[AGENT]: Model Response: {response}", color="light_green"
+                            f"[AGENT]: Model Response: {response}", color="grey"
                         )
                     )
                 # if the name field of the response is not Empty
@@ -165,7 +165,7 @@ class FunctionCallingAgent(BaseAgent):
                         tool_name = tool["function"]["name"]
                         if verbose:
                             print(colored(
-                                "[AGENT]: Calling Tool: " + tool_name + "()...", color="light_green"
+                                "[AGENT]: Calling Tool: " + tool_name + "()...", color="grey"
                             ))
                         tool_output = self._call_function(
                             self.tool_dict[tool_name], tool
@@ -214,7 +214,7 @@ class FunctionCallingAgent(BaseAgent):
                     )
                     print(
                         colored(
-                            "Attempting to Answer from model Knowledge !", color="cyan"
+                            "Attempting to Answer from model Knowledge !", color="yellow"
                         )
                     )
                 additional_context = (

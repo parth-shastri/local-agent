@@ -12,6 +12,7 @@ from termcolor import colored
 
 # TODO: Port to add outlines support incase the model is not a function calling llm
 
+
 class OllamaModel(BaseLLM):
     """
     Ollama models served through the ollama endpoint
