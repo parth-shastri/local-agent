@@ -1,6 +1,9 @@
 """
 User-defined python tools that model can use, (Python functions)
 """
+from src.tools.functions.stock_analysis_functions import (
+    analyse_company_yf
+)
 
 # define the tools
 
@@ -57,4 +60,4 @@ def divide(a: int, b: int) -> int:
     return a // b
 
 
-__all__ = ["multiply", "add", "subtract", "divide"]
+__all__ = ["multiply", "add", "subtract", "divide", "analyse_company_yf"]
